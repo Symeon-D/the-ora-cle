@@ -301,6 +301,9 @@
   .btn-cluster { background: transparent; color: #7c83fd; border: 1px solid #7c83fd; }
   .btn-cluster:hover { background: #7c83fd15; }
   .btn-cluster.active { background: #7c83fd; color: white; }
+  .btn-filter-clusters { background: transparent; color: #555; border: 1px solid #444; opacity: 0.45; }
+  .btn-filter-clusters:not([disabled]) { color: #7c83fd; border-color: #7c83fd; opacity: 1; }
+  .btn-filter-clusters:not([disabled]):hover { background: #7c83fd15; }
   .btn-save { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
   .btn-save:hover { background: #4fc3f715; }
   .btn-reset { background: transparent; color: #78909c; border: 1px solid #b0bec5; }
@@ -1021,6 +1024,7 @@
 
   <div style="display:flex;flex-direction:column;gap:7px;">
     <button class="btn btn-cluster" id="clusterModeBtn" onclick="toggleClusterMode()">⊞ Manual Clustering</button>
+    <button class="btn btn-filter-clusters" id="filterClustersBtn" onclick="filterTopPerCluster()" disabled title="Keep only the top term per cluster">⊟ Filter Top per Cluster</button>
     <button class="btn btn-genes" id="geneMatrixBtn" onclick="toggleAccordionMode()">≡ Show Gene Matrix</button>
     <button class="btn btn-edit" id="editModeBtn" onclick="toggleEditMode()">✎ Edit Visible Terms</button>
   </div>
@@ -1049,6 +1053,13 @@
         <div class="range-with-input">
           <input type="range" id="legendScale" min="0.5" max="3" value="1" step="0.1" oninput="syncNum('legendScale','legendScaleNum');renderAll()">
           <input type="number" class="num-input" id="legendScaleNum" value="1" min="0.5" max="3" step="0.1" onchange="syncRange('legendScaleNum','legendScale');renderAll()" onblur="syncRange('legendScaleNum','legendScale');renderAll()">
+        </div>
+      </div>
+      <div class="ctrl-row">
+        <label>Plot width scale</label>
+        <div class="range-with-input">
+          <input type="range" id="plotScale" min="0.2" max="1" value="1" step="0.05" oninput="syncNum('plotScale','plotScaleNum');renderAll()">
+          <input type="number" class="num-input" id="plotScaleNum" value="1" min="0.2" max="1" step="0.05" onchange="syncRange('plotScaleNum','plotScale');renderAll()" onblur="syncRange('plotScaleNum','plotScale');renderAll()">
         </div>
       </div>
       <div class="ctrl-row">
@@ -1572,6 +1583,34 @@ function updateGenePanelBtn() {
   }
 }
 
+function updateFilterClustersBtn() {
+  const btn = v('filterClustersBtn');
+  if (!btn) return;
+  const hasClusters = panels.some(p =>
+    getPanelClusters(p).some(c => c.id !== 0 && c.terms.length > 0)
+  );
+  btn.disabled = !hasClusters;
+}
+
+function filterTopPerCluster() {
+  const btn = v('filterClustersBtn');
+  if (btn && btn.disabled) return;
+  panels.forEach(panel => {
+    const clusters = getPanelClusters(panel);
+    if (!clusters.length) return;
+    const data = getPanelData(panel);
+    clusters.forEach(cluster => {
+      if (cluster.id === 0) return;
+      const clusterTerms = data
+        .filter(d => cluster.terms.includes(d.term_name))
+        .sort((a, b) => b['-log10(padj)'] - a['-log10(padj)']);
+      if (clusterTerms.length <= 1) return;
+      clusterTerms.slice(1).forEach(d => panel.hiddenTerms.add(d.term_name));
+    });
+  });
+  renderAll();
+}
+
 function updateDeleteBtn() {
   const btn = v('deletePanelBtn');
   if (btn) {
@@ -2005,7 +2044,7 @@ function startTitleEdit(panel, panelIndex, panelTopSVG, innerH, innerW) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // RENDER ALL — stacked subplots sharing a common X axis scale
 // ═══════════════════════════════════════════════════════════════════════════════
-function renderAll() { render(); }
+function renderAll() { render(); updateFilterClustersBtn(); }
 function render() {
   if (!panels.length) return;
 
@@ -2057,10 +2096,11 @@ function render() {
   const geneMatActive = accordionMode && openTermKeys.size > 0;
   const MARGIN_RIGHT = geneMatActive ? 20 : LEGEND_W + 30;
   // Gene matrix active: compress plot width so matrix columns are visible
+  const plotScale = parseFloat(v('plotScale')?.value || '1') || 1;
   const rawInnerW = availW - MARGIN_LEFT - MARGIN_RIGHT;
   const innerW = geneMatActive
     ? Math.max(Math.min(rawInnerW, 150), 120)  // compressed: max 150px
-    : Math.max(rawInnerW, 200);
+    : Math.max(rawInnerW * plotScale, 200);
 
   // Total SVG height: first panel has top padding, all panels reserve icon bar space above
   const PANEL_TOP    = 26;  // top of first panel (title bar + breathing room)
@@ -3083,6 +3123,7 @@ function resetAppearance() {
   v('fontSize').value    = def.fontSize;    v('fontSizeNum').value    = def.fontSize;
   v('titleSize').value   = def.titleSize;   v('titleSizeNum').value   = def.titleSize;
   v('legendScale').value = 1;               v('legendScaleNum').value = 1;
+  v('plotScale').value = 1;                v('plotScaleNum').value = 1;
   renderAll();
 }
 
